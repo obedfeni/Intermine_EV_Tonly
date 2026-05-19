@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+enum UserRole { WORKER TECHNICIAN SUPERVISOR CHARGING_OPERATOR }
+enum TruckStatus { ACTIVE MAINTENANCE CHARGING FAULTY IDLE }
+enum FaultSeverity { LOW MEDIUM HIGH CRITICAL }
+enum FaultStatus { OPEN IN_PROGRESS RESOLVED }
+enum TaskStatus { PENDING ASSIGNED IN_PROGRESS COMPLETED CANCELLED }
+enum TaskPriority { LOW MEDIUM HIGH URGENT }
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+model User {
+  id             String        @id @default(cuid())
+  name           String?
+  email          String        @unique
+  emailVerified  DateTime?
+  image          String?
+  password       String?
+  role           UserRole      @default(WORKER)
+  accounts       Account[]
+  sessions       Session[]
+  faultsReported Fault[]       @relation("Reporter")
+  tasksAssigned  Task[]        @relation("Assignee")
+  tasksCreated   Task[]        @relation("Creator")
+  chargingLogs   ChargingLog[]
+  createdAt      DateTime      @default(now())
+}
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+}
+model Truck {
+  id              String        @id @default(cuid())
+  truckId         String        @unique
+  model           String
+  year            Int
+  licensePlate    String        @unique
+  vin             String        @unique
+  batteryCapacity Int
+  status          TruckStatus   @default(ACTIVE)
+  mileage         Int           @default(0)
+  lastService     DateTime?
+  nextService     DateTime?
+  location        String?
+  faults          Fault[]
+  tasks           Task[]
+  chargingLogs    ChargingLog[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+model Fault {
+  id          String        @id @default(cuid())
+  title       String
+  description String
+  severity    FaultSeverity
+  status      FaultStatus   @default(OPEN)
+  truckId     String
+  truck       Truck         @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  reportedBy  String
+  reporter    User          @relation("Reporter", fields: [reportedBy], references: [id])
+  assignedTo  String?
+  resolution  String?
+  images      String[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+model Task {
+  id          String       @id @default(cuid())
+  title       String
+  description String
+  status      TaskStatus   @default(PENDING)
+  priority    TaskPriority @default(MEDIUM)
+  truckId     String
+  truck       Truck        @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  assignedTo  String?
+  assignee    User?        @relation("Assignee", fields: [assignedTo], references: [id])
+  createdBy   String
+  creator     User         @relation("Creator", fields: [createdBy], references: [id])
+  scheduledAt DateTime?
+  completedAt DateTime?
+  notes       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+model ChargingLog {
+  id           String    @id @default(cuid())
+  truckId      String
+  truck        Truck     @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  operatorId   String
+  operator     User      @relation(fields: [operatorId], references: [id])
+  startTime    DateTime
+  endTime      DateTime?
+  startBattery Int
+  endBattery   Int?
+  kwhDelivered Float?
+  stationId    String
+  cost         Float?
+  notes        String?
+  createdAt    DateTime  @default(now())
+}
